@@ -216,14 +216,14 @@ spec:
   - hosts: 
     - gfplive.com
     secretName: letsencrypt-certs
-    rules:
-      - host: gfplive.com
-        http:
-          paths:
-          - path: /
-            backend:
-              serviceName: nginx
-              servicePort: 80
+  rules:
+    - host: gfplive.com
+      http:
+        paths:
+        - path: /
+          backend:
+            serviceName: nginx
+            servicePort: 80
 
     
 
