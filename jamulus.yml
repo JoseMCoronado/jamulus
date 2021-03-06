@@ -129,11 +129,6 @@ data:
         server letsencrypt-job:80;
     }
 
-    upstream grafana {
-        server grafana.monitoring.svc.cluster.local;
-    }
-
-
     server {
         server_name gfplive.com
         listen 80 default_server;
