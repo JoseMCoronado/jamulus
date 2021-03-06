@@ -2,29 +2,29 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-    name: letsencrypt-job
-    namespace: jamulus
-    labels:
+  name: letsencrypt-job
+  namespace: jamulus
+  labels:
     app: letsencrypt-job
 spec:
-    template:
+  template:
     metadata:
-        name: letsencrypt-job
-        labels:
+      name: letsencrypt-job
+      labels:
         app: letsencrypt-job
     spec:
-        containers:
-        - image: gfpsolutions/k8s-nginx-letsencrypt
+      containers:
+      - image: gfpsolutions/k8s-nginx-letsencrypt
         name: letsencrypt-job
         imagePullPolicy: Always
         ports:
         - name: letsencrypt
-            containerPort: 80
+          containerPort: 80
         env:
         - name: DOMAINS
-            value: gfplive.com 
+          value: gfplive.com 
         - name: EMAIL
-            value: infrastructure@gfpsolutions.com
+          value: infrastructure@gfpsolutions.com
         - name: SECRET
-            value: letsencrypt-certs
-        restartPolicy: Never
+          value: letsencrypt-certs
+    restartPolicy: Never
