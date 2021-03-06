@@ -144,11 +144,6 @@ data:
         proxy_set_header X-Real-IP $remote_addr;
 
         # Redirect to letsencrypt job
-        location /monitoring {
-        proxy_pass http://grafana;
-        }
-
-        # Redirect to letsencrypt job
         location /.well-known {
         proxy_pass http://letsencrypt-job;
         }
