@@ -1,0 +1,230 @@
+---
+kind: jamulus
+apiVersion: v1
+metadata:
+    name: jamulus
+    labels:
+        name: jamulus
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: secret-reader
+rules:
+- apiGroups: ["","extensions", "apps", "jobs"]
+    resources: ["secrets"]
+    verbs: ["get", "watch", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: read-secrets
+    namespace: jamulus
+subjects:
+- kind: User
+    name: system:serviceaccount:jamulus:default
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+    kind: ClusterRole
+    name: secret-reader
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: letsencrypt-certs
+    namespace: jamulus
+type: Opaque
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: nginx
+    namespace: jamulus
+spec:
+    selector:
+    app: nginx
+    type: NodePort
+    ports:
+    - protocol: "TCP"
+    nodePort: 32111
+    port: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: letsencrypt-job
+    namespace: jamulus
+    labels:
+    app: letsencrypt-job
+spec:
+    ports:
+    - port: 80
+        protocol: "TCP"
+    selector:
+    app: letsencrypt-jobs
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: jamulus-service
+    namespace: jamulus
+    labels:
+    app: jamulus-service
+spec:
+    ports:
+    - port: 22124
+        targetPort: 22124
+    selector:
+    app: jamulus-service
+    tier: frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: jamulus-service
+    namespace: jamulus
+    labels:
+    app: jamulus-service
+spec:
+    replicas: 10
+    strategy:
+    type: Recreate
+    selector:
+    matchLabels:
+        app: jamulus-service
+    template:
+    metadata:
+        labels:
+        app: jamulus-service
+        tier: frontend
+    spec:
+        containers:
+        - image: grundic/jamulus
+            name: jamulus-service
+            env:
+            - name: SOMERANDOMVARIABLE
+              value: "5432"
+            securityContext:
+                privileged: true
+                runAsUser: 0
+            ports:
+                - containerPort: 22124
+                    name: jamulus
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: nginx-config
+    namespace: jamulus
+data:
+    ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA256:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA"
+    ssl-protocols: "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3"
+    default.conf: |
+    upstream jamulus-service {
+        server jamulus-service:22124;
+    }
+
+    upstream letsencrypt-job {
+        server letsencrypt-job:80;
+    }
+
+    upstream grafana {
+        server grafana.monitoring.svc.cluster.local;
+    }
+
+
+    server {
+        server_name gfplive.com
+        listen 80 default_server;
+        proxy_read_timeout 1800s;
+        proxy_connect_timeout 1800s;
+        proxy_send_timeout 1800s;
+        client_max_body_size 256M;
+
+        # Add Headers for jamulus proxy mode
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        # Redirect to letsencrypt job
+        location /monitoring {
+        proxy_pass http://grafana;
+        }
+
+        # Redirect to letsencrypt job
+        location /.well-known {
+        proxy_pass http://letsencrypt-job;
+        }
+
+        # Redirect requests to jamulus backend server
+        location / {
+        proxy_redirect off;
+        proxy_pass http://jamulus-service;
+        }
+
+        # common gzip
+        gzip_types text/css text/less text/plain text/xml application/xml application/json application/javascript;
+        gzip on;
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    labels:
+    app: nginx
+    name: nginx
+    namespace: jamulus
+spec:
+    replicas: 2
+    selector:
+    matchLabels:
+        app: nginx
+    template:
+    metadata:
+        labels:
+        app: nginx
+    spec:
+        containers:
+        - name: nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: nginx-configs
+            mountPath: /etc/nginx/conf.d
+        volumes:
+        - name: nginx-configs
+            configMap:
+            name: nginx-config
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+    name: nginx-container-ingress
+    namespace: jamulus
+    annotations:
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-body-size: 256m
+    labels:
+    last_updated: "1494099933"
+spec:
+    tls:
+    - hosts: 
+      - gfplive.com
+      secretName: letsencrypt-certs
+    rules:
+        - host: gfplive.com
+            http:
+                paths:
+                - path: /
+                backend:
+                    serviceName: nginx
+                    servicePort: 80
+
+    
+
+    
