@@ -27,4 +27,4 @@ spec:
           value: infrastructure@gfpsolutions.com
         - name: SECRET
           value: letsencrypt-certs
-    restartPolicy: Never
+      restartPolicy: Never
