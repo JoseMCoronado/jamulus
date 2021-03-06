@@ -75,9 +75,9 @@ spec:
   ports:
     - port: 22124
       targetPort: 22124
-    selector:
-      app: jamulus-service
-      tier: frontend
+  selector:
+    app: jamulus-service
+    tier: frontend
 ---
 apiVersion: apps/v1
 kind: Deployment
